@@ -51,7 +51,7 @@ logs/
 
 # Environment variables
 .env*
-!.env.example
+
 
 # OS
 .DS_Store
