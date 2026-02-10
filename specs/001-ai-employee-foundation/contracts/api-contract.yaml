@@ -1,0 +1,219 @@
+# API Contract: AI Employee Foundation
+
+## Overview
+This document defines the API contracts for the AI Employee Foundation system. The system primarily uses file-based interfaces with Claude Code integration, but includes programmatic interfaces for management and monitoring.
+
+## Management API
+
+### Vault Operations
+
+#### GET /vault/stats
+**Description**: Retrieve vault statistics and system health metrics
+
+**Request**:
+- Method: GET
+- Path: `/vault/stats`
+- Headers: None required
+- Parameters: None
+
+**Response**:
+```
+{
+  "total_actions": 12,
+  "pending_approvals": 3,
+  "processed_today": 8,
+  "system_health": "operational",
+  "last_updated": "2026-02-06T10:30:00Z",
+  "watchers_active": true,
+  "claude_connected": true
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 500: Internal server error
+
+#### GET /vault/actions/pending
+**Description**: Retrieve list of pending actions
+
+**Request**:
+- Method: GET
+- Path: `/vault/actions/pending`
+- Headers: None required
+- Parameters: None
+
+**Response**:
+```
+{
+  "actions": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "type": "meeting_request",
+      "priority": "medium",
+      "created_at": "2026-02-06T09:00:00Z",
+      "source": "gmail"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 500: Internal server error
+
+### Watcher Control
+
+#### POST /watcher/{source}/start
+**Description**: Start a specific watcher service
+
+**Path Parameters**:
+- `source`: Watcher source (e.g., "gmail", "filesystem")
+
+**Request**:
+- Method: POST
+- Path: `/watcher/{source}/start`
+- Headers: None required
+- Body: None
+
+**Response**:
+```
+{
+  "status": "started",
+  "source": "gmail",
+  "timestamp": "2026-02-06T10:30:00Z"
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 400: Invalid source
+- 500: Internal server error
+
+#### POST /watcher/{source}/stop
+**Description**: Stop a specific watcher service
+
+**Path Parameters**:
+- `source`: Watcher source (e.g., "gmail", "filesystem")
+
+**Request**:
+- Method: POST
+- Path: `/watcher/{source}/stop`
+- Headers: None required
+- Body: None
+
+**Response**:
+```
+{
+  "status": "stopped",
+  "source": "gmail",
+  "timestamp": "2026-02-06T10:30:00Z"
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 400: Invalid source
+- 500: Internal server error
+
+### Claude Integration
+
+#### POST /claude/process-action
+**Description**: Submit an action for Claude processing
+
+**Request**:
+- Method: POST
+- Path: `/claude/process-action`
+- Headers:
+  - Content-Type: application/json
+- Body:
+```
+{
+  "action_id": "123e4567-e89b-12d3-a456-426614174000",
+  "action_content": {
+    // Action file content as JSON
+  }
+}
+```
+
+**Response**:
+```
+{
+  "plan_id": "123e4567-e89b-12d3-a456-426614174001",
+  "status": "created",
+  "timestamp": "2026-02-06T10:30:00Z"
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 400: Invalid action content
+- 500: Internal server error
+
+### Approval Workflow
+
+#### POST /approvals/{action_id}/approve
+**Description**: Approve an action for execution
+
+**Path Parameters**:
+- `action_id`: ID of the action to approve
+
+**Request**:
+- Method: POST
+- Path: `/approvals/{action_id}/approve`
+- Headers: None required
+- Body: None
+
+**Response**:
+```
+{
+  "action_id": "123e4567-e89b-12d3-a456-426614174000",
+  "status": "approved",
+  "execution_scheduled": true,
+  "timestamp": "2026-02-06T10:30:00Z"
+}
+```
+
+**Status Codes**:
+- 200: Success
+- 404: Action not found
+- 500: Internal server error
+
+## Event Notifications
+
+### File System Events
+The system monitors the vault file system and generates events when files are created, modified, or moved between folders. These events trigger the appropriate processing pipeline.
+
+### Event Types
+- `ACTION_CREATED`: New action file created in `/Needs_Action/`
+- `PLAN_COMPLETED`: Plan file created in `/Plans/`
+- `APPROVAL_REQUESTED`: Approval file created in `/Pending_Approval/`
+- `ACTION_APPROVED`: File moved from `/Pending_Approval/` to `/Approved/`
+- `ACTION_EXECUTED`: Action successfully executed
+
+## Security Considerations
+
+### Authentication
+- Management API endpoints may require authentication for production environments
+- File-based authentication through OS-level permissions
+
+### Authorization
+- API endpoints should validate requester permissions
+- File operations should follow least-privilege access patterns
+
+## Error Handling
+
+### Standard Error Response
+```
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "timestamp": "2026-02-06T10:30:00Z",
+    "request_id": "unique-request-id"
+  }
+}
+```
+
+## Rate Limiting
+- API endpoints should implement appropriate rate limiting
+- File system operations should include backoff strategies for failed operations

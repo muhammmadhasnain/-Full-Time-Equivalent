@@ -1,0 +1,33 @@
+# Application Configuration
+app:
+  name: "AI Employee Foundation"
+  env: ${APP_ENV:-development}
+  vault_path: ${VAULT_PATH:-./AI_Employee_Vault}
+
+# Gmail Configuration
+gmail:
+  client_id: ${GMAIL_CLIENT_ID}
+  client_secret: ${GMAIL_CLIENT_SECRET}
+  refresh_token: ${GMAIL_REFRESH_TOKEN}
+  scopes:
+    - "https://www.googleapis.com/auth/gmail.readonly"
+    - "https://www.googleapis.com/auth/gmail.modify"
+
+# Claude Configuration
+claude:
+  api_key: ${CLAUDE_API_KEY}
+
+# Logging Configuration
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+
+# Watcher Configuration
+watcher:
+  poll_interval: 30  # seconds
+  max_retries: 3
+
+# Approval Configuration
+approval:
+  dry_run: true  # Set to false to enable real actions

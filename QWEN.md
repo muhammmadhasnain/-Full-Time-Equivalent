@@ -1,4 +1,4 @@
-# Claude Code Rules
+# Qwen Code Rules
 
 This file is generated during init for the selected agent.
 
@@ -208,10 +208,3 @@ Wait for consent; never auto-create ADRs. Group related decisions (stacks, authe
 
 ## Code Standards
 See `.specify/memory/constitution.md` for code quality, testing, performance, security, and architecture principles.
-
-## Active Technologies
-- Python 3.13+ with asyncio support + google-auth, google-auth-oauthlib, google-auth-httplib2, google-api-python-client, pyyaml, watchdog, python-dotenv (001-ai-employee-foundation)
-- File system-based (Obsidian vault structure) (001-ai-employee-foundation)
-
-## Recent Changes
-- 001-ai-employee-foundation: Added Python 3.13+ with asyncio support + google-auth, google-auth-oauthlib, google-auth-httplib2, google-api-python-client, pyyaml, watchdog, python-dotenv

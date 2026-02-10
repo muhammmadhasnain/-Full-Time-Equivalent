@@ -1,0 +1,87 @@
+# Byte-order mark for UTF-8 files on Windows
+*.utf8
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Icon?
+.nul
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+runtime.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env*
+!.env.example
+
+# OS
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.nox/
+pytest_debug.log
+
+# Distribution / packaging
+.pytest_cache/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.coverage.*
+
+# Local configuration
+.settings/
+.settings.bak/
+
+# Backup files
+*~
+*.bak
+*.tmp
+
+# Coverage
+.coverage*
+
+# Exclude the problematic 'nul' file
+nul
