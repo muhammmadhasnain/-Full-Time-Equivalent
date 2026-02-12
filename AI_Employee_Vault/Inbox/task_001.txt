@@ -1,0 +1,17 @@
+Task ID: 001
+Title: Create Daily Sales Report
+Priority: High
+Created At: 2026-02-11
+
+Description:
+Generate a daily sales summary report including:
+- Total sales
+- Total customers
+- Top 5 products
+- Revenue breakdown
+
+Requested By:
+Admin
+
+Status:
+New

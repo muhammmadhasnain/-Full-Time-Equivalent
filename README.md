@@ -1,6 +1,6 @@
 # AI Employee Foundation
 
-The AI Employee Foundation implements a local-first automation system centered around an Obsidian vault. The system includes a Gmail Watcher to monitor emails and create action file, Claude Code integration to process these actions and generate Plan.md files, and a human-in-the-loop approval system.
+The AI Employee Foundation implements a local-first automation system centered around an Obsidian vault. The system includes a local-first monitoring system to watch for new files in the Inbox folder, Claude Code integration to process these actions and generate Plan.md files, and a human-in-the-loop approval system.
 
 ## Features
 
@@ -9,6 +9,8 @@ The AI Employee Foundation implements a local-first automation system centered a
 - Claude Code integration to process actions and generate plans
 - Human-in-the-loop approval system for safe automation
 - Comprehensive logging and audit trails
+- Local monitoring system for Inbox folder
+- Claude Code local monitoring without API requirements
 
 ## Prerequisites
 
@@ -65,13 +67,25 @@ AI_Employee_Vault/
 └── Dashboard.md
 ```
 
-### 2. Configure Gmail Integration
-Follow the Gmail OAuth setup process:
+### 2. Configure Gmail Integration (Optional)
+Follow the Gmail OAuth setup process if you want to enable email monitoring:
 ```bash
 python -m src.cli.main config gmail
 ```
 
-### 3. Start the Orchestrator
+### 3. Start the Local Monitoring System
+Start the local monitoring system to watch for new files in the Inbox:
+```bash
+python src/monitor.py
+```
+
+This will:
+- Continuously monitor the `/Inbox` folder for new files
+- Log detected events in `/System_Log/events.log`
+- Move processed files to `/Processed`
+- Allow Claude Code to detect changes without using the Claude API
+
+### 4. Start the Orchestrator
 ```bash
 python -m src.cli.main start
 ```
@@ -90,7 +104,26 @@ This starts:
 - Completed actions are moved to the `Done/` folder
 - Check `Dashboard.md` for system metrics and status
 
-### 5. Management Commands
+### 5. Claude Code Local Monitoring
+Start the Claude Code monitoring system to detect new files and tasks without using the Claude API:
+```bash
+# Windows
+start_claude_monitor.bat
+
+# Linux/macOS
+./start_claude_monitor.sh
+
+# Manual method
+python src/claude_code_monitor.py
+```
+
+This will:
+- Continuously monitor `AI_Employee_Vault/System_Log/events.log` for new events
+- Watch `AI_Employee_Vault/Pending_Approval/` for files requiring review
+- Log Claude Code awareness events in `AI_Employee_Vault/System_Log/claude_awareness.log`
+- Prepare for Plan.md generation without requiring Claude API
+
+### 6. Management Commands
 ```bash
 # Check vault integrity
 python -m src.cli.main vault check
@@ -104,6 +137,10 @@ python -m src.cli.main vault stats
 # Stop/start individual components
 python -m src.cli.main watch start
 python -m src.cli.main watch stop
+
+# Start/stop Claude Code monitoring
+start_claude_monitor.bat  # Windows
+./start_claude_monitor.sh  # Linux/macOS
 ```
 
 For more detailed instructions, see the [Quickstart Guide](specs/001-ai-employee-foundation/quickstart.md) and our [documentation](docs/).
@@ -114,6 +151,8 @@ For more detailed instructions, see the [Quickstart Guide](specs/001-ai-employee
 - [API Documentation](docs/api.md) - API endpoints and CLI commands
 - [Usage Guide](docs/usage.md) - Detailed usage instructions
 - [Quickstart Guide](specs/001-ai-employee-foundation/quickstart.md) - Getting started guide
+- [Claude Code Monitoring](docs/claude_code_integration.md) - Claude Code local monitoring system
+- [Using the Monitoring System](docs/using_the_monitoring_system.md) - How to use the monitoring system
 
 ## Architecture
 

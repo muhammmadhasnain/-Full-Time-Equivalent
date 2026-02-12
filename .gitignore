@@ -50,7 +50,9 @@ runtime.txt
 logs/
 
 # Environment variables
-.env*
+.env
+.env.local
+.env.*.local
 
 
 # OS

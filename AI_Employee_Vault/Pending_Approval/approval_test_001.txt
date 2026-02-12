@@ -1,0 +1,14 @@
+# Approval Test Task
+
+This is a test task to verify Claude Code monitoring of the Pending_Approval folder.
+
+## Details
+- Type: Test
+- Priority: Low
+- Action: None required - just testing detection
+
+## Expected Behavior
+1. Claude Code monitoring system should detect this file
+2. File content should be read and parsed
+3. Awareness should be logged in claude_awareness.log
+4. System should prepare for Plan.md generation
