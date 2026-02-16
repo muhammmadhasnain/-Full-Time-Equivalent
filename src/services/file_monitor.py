@@ -1,140 +1,89 @@
 """
-File monitor service for AI Employee Foundation
-Monitors vault folders for file changes and triggers appropriate actions
+File Monitor Service - Gold Tier
+Event-driven filesystem watcher using watchdog
 """
-import time
-import sys
-import threading
+import asyncio
+import logging
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Dict, Any, Optional, Callable
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent, FileMovedEvent, FileDeletedEvent
+import yaml
+import time
 
-# Add the src directory to the path so we can import modules
-current_dir = Path(__file__).parent
-src_dir = current_dir.parent
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+# Add the src directory to the path
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from lib.event_bus import EventType, publish_event, get_event_bus
+from lib.utils import get_current_iso_timestamp, ensure_directory_exists
+from lib.constants import ACTION_FILE_EXT
 from models.action_file import ActionFile
-from models.approval_file import ApprovalFile
-from lib.exceptions import FileMonitorError
 
 
-class FileMonitor(FileSystemEventHandler):
-    """
-    Service that monitors vault folders for file changes and triggers appropriate actions.
-    Uses watchdog to monitor file system events.
-    """
+class FileEventHandler(FileSystemEventHandler):
+    """Handler for file system events with event bus integration."""
     
-    def __init__(self, config_path: str = "./config.yaml"):
-        """
-        Initialize the file monitor with configuration.
-        
-        Args:
-            config_path: Path to the configuration file
-        """
-        self.config_path = config_path
-        self.observer = Observer()
-        self.watched_paths = {}
-        self.event_callbacks = {}
-        self.vault_path = None
-        self.is_running = False
-        
-        # Load configuration
-        self.load_config()
+    def __init__(self, folder_name: str, event_bus, logger: logging.Logger):
+        self.folder_name = folder_name
+        self.event_bus = event_bus
+        self.logger = logger
+        self._debounce: Dict[str, float] = {}
+        self._debounce_interval = 0.5  # seconds
     
-    def load_config(self):
-        """Load configuration from the config file."""
-        # In a real implementation, we would load the config file and extract the necessary values
-        # For now, we'll use a default vault path
-        self.vault_path = "./AI_Employee_Vault"
-    
-    def start_monitoring(self, vault_path: str = None):
-        """
-        Start monitoring the vault folders.
+    def _should_process(self, path: str) -> bool:
+        """Debounce rapid file events."""
+        now = time.time()
+        last_time = self._debounce.get(path, 0)
         
-        Args:
-            vault_path: Path to the vault to monitor (uses default if not provided)
-        """
-        if vault_path:
-            self.vault_path = vault_path
+        if now - last_time < self._debounce_interval:
+            return False
         
-        vault_path_obj = Path(self.vault_path)
-        
-        # Define the folders to monitor
-        folders_to_monitor = [
-            "Needs_Action",
-            "Pending_Approval",
-            "Approved",
-            "Inbox"
-        ]
-        
-        # Set up event handlers for each folder
-        for folder_name in folders_to_monitor:
-            folder_path = vault_path_obj / folder_name
-            folder_path.mkdir(parents=True, exist_ok=True)
-            
-            # Schedule monitoring for this folder
-            event_handler = self
-            self.observer.schedule(event_handler, str(folder_path), recursive=False)
-            
-            # Store the path for reference
-            self.watched_paths[folder_name] = folder_path
-        
-        # Start the observer
-        self.observer.start()
-        self.is_running = True
-        
-        print(f"File monitoring started for vault: {self.vault_path}")
-        print(f"Monitoring folders: {list(self.watched_paths.keys())}")
-    
-    def stop_monitoring(self):
-        """Stop monitoring file system events."""
-        self.observer.stop()
-        self.observer.join()
-        self.is_running = False
-        
-        print("File monitoring stopped")
-    
-    def register_callback(self, event_type: str, folder: str, callback: Callable):
-        """
-        Register a callback function for a specific event type in a specific folder.
-        
-        Args:
-            event_type: Type of event ('created', 'modified', 'moved', 'deleted')
-            folder: Folder name to listen for events in
-            callback: Function to call when the event occurs
-        """
-        if event_type not in self.event_callbacks:
-            self.event_callbacks[event_type] = {}
-        self.event_callbacks[event_type][folder] = callback
+        self._debounce[path] = now
+        return True
     
     def on_created(self, event):
         """Handle file creation events."""
         if event.is_directory:
             return
         
-        file_path = Path(event.src_path)
-        folder_name = file_path.parent.name
+        if not self._should_process(event.src_path):
+            return
         
-        # Check if we have a callback registered for this event type and folder
-        if 'created' in self.event_callbacks and folder_name in self.event_callbacks['created']:
-            callback = self.event_callbacks['created'][folder_name]
-            callback(file_path)
+        file_path = Path(event.src_path)
+        self.logger.debug(f"File created in {self.folder_name}: {file_path.name}")
+        
+        publish_event(
+            EventType.FILE_CREATED,
+            {
+                "path": str(file_path),
+                "filename": file_path.name,
+                "folder": self.folder_name,
+                "size": file_path.stat().st_size if file_path.exists() else 0
+            },
+            source=f"file_monitor.{self.folder_name}"
+        )
     
     def on_modified(self, event):
         """Handle file modification events."""
         if event.is_directory:
             return
         
-        file_path = Path(event.src_path)
-        folder_name = file_path.parent.name
+        if not self._should_process(event.src_path):
+            return
         
-        # Check if we have a callback registered for this event type and folder
-        if 'modified' in self.event_callbacks and folder_name in self.event_callbacks['modified']:
-            callback = self.event_callbacks['modified'][folder_name]
-            callback(file_path)
+        file_path = Path(event.src_path)
+        self.logger.debug(f"File modified in {self.folder_name}: {file_path.name}")
+        
+        publish_event(
+            EventType.FILE_MODIFIED,
+            {
+                "path": str(file_path),
+                "filename": file_path.name,
+                "folder": self.folder_name
+            },
+            source=f"file_monitor.{self.folder_name}"
+        )
     
     def on_moved(self, event):
         """Handle file move events."""
@@ -143,18 +92,20 @@ class FileMonitor(FileSystemEventHandler):
         
         src_path = Path(event.src_path)
         dest_path = Path(event.dest_path)
-        src_folder = src_path.parent.name
-        dest_folder = dest_path.parent.name
         
-        # Check if we have a callback registered for this event type and source folder
-        if 'moved' in self.event_callbacks and src_folder in self.event_callbacks['moved']:
-            callback = self.event_callbacks['moved'][src_folder]
-            callback(src_path, dest_path)
+        self.logger.debug(f"File moved: {src_path.name} -> {dest_path}")
         
-        # Also check for destination folder callbacks
-        if 'moved_to' in self.event_callbacks and dest_folder in self.event_callbacks['moved_to']:
-            callback = self.event_callbacks['moved_to'][dest_folder]
-            callback(src_path, dest_path)
+        publish_event(
+            EventType.FILE_MOVED,
+            {
+                "src_path": str(src_path),
+                "dest_path": str(dest_path),
+                "filename": dest_path.name,
+                "src_folder": src_path.parent.name,
+                "dest_folder": dest_path.parent.name
+            },
+            source=f"file_monitor.{self.folder_name}"
+        )
     
     def on_deleted(self, event):
         """Handle file deletion events."""
@@ -162,108 +113,293 @@ class FileMonitor(FileSystemEventHandler):
             return
         
         file_path = Path(event.src_path)
-        folder_name = file_path.parent.name
+        self.logger.debug(f"File deleted in {self.folder_name}: {file_path.name}")
         
-        # Check if we have a callback registered for this event type and folder
-        if 'deleted' in self.event_callbacks and folder_name in self.event_callbacks['deleted']:
-            callback = self.event_callbacks['deleted'][folder_name]
-            callback(file_path)
-    
-    def handle_needs_action_created(self, file_path: Path):
-        """
-        Handle when a new action file is created in the Needs_Action folder.
-        
-        Args:
-            file_path: Path to the newly created action file
-        """
-        print(f"New action file detected: {file_path.name}")
-        
-        # In a real implementation, we would trigger the Claude service to process this file
-        # For now, we'll just log the event
-        print(f"  - Would trigger Claude service to process: {file_path.name}")
-    
-    def handle_pending_approval_created(self, file_path: Path):
-        """
-        Handle when a new approval file is created in the Pending_Approval folder.
-        
-        Args:
-            file_path: Path to the newly created approval file
-        """
-        print(f"New approval request detected: {file_path.name}")
-        
-        # In a real implementation, we would notify the user that approval is needed
-        # For now, we'll just log the event
-        print(f"  - Would notify user that approval is needed for: {file_path.name}")
-    
-    def handle_approved_moved(self, src_path: Path, dest_path: Path):
-        """
-        Handle when an approval file is moved from Pending_Approval to Approved.
-        
-        Args:
-            src_path: Original path of the file
-            dest_path: New path of the file
-        """
-        print(f"Approval granted: {src_path.name} moved to Approved")
-        
-        # In a real implementation, we would trigger the execution of the approved action
-        # For now, we'll just log the event
-        print(f"  - Would trigger execution of action: {src_path.name}")
-    
-    def handle_inbox_created(self, file_path: Path):
-        """
-        Handle when a new file is created in the Inbox folder.
-        
-        Args:
-            file_path: Path to the newly created file
-        """
-        print(f"New file in inbox: {file_path.name}")
-        
-        # In a real implementation, we would process this file based on its type
-        # For now, we'll just log the event
-        print(f"  - Would process inbox file: {file_path.name}")
-    
-    def setup_default_callbacks(self):
-        """Set up default callbacks for common events."""
-        # When a file is created in Needs_Action, trigger Claude processing
-        self.register_callback('created', 'Needs_Action', self.handle_needs_action_created)
-        
-        # When a file is created in Pending_Approval, notify for approval
-        self.register_callback('created', 'Pending_Approval', self.handle_pending_approval_created)
-        
-        # When a file is moved to Approved, trigger execution
-        self.register_callback('moved_to', 'Approved', self.handle_approved_moved)
-        
-        # When a file is created in Inbox, process it
-        self.register_callback('created', 'Inbox', self.handle_inbox_created)
+        publish_event(
+            EventType.FILE_DELETED,
+            {
+                "path": str(file_path),
+                "filename": file_path.name,
+                "folder": self.folder_name
+            },
+            source=f"file_monitor.{self.folder_name}"
+        )
 
 
-class FileMonitorManager:
+class FileMonitor:
     """
-    Manager class to handle multiple file monitors if needed.
+    Gold Tier File Monitor - Event-driven filesystem watcher.
+    
+    Responsibilities:
+    - Monitor vault folders for file changes using watchdog
+    - Publish events to the event bus
+    - Convert inbox files to action files
+    - Track file workflow transitions
     """
     
-    def __init__(self):
-        self.monitors = {}
+    def __init__(self, config_path: str = "./config.yaml"):
+        self.config_path = config_path
+        self.config = {}
+        self.vault_path: Optional[str] = None
+        self.logger = logging.getLogger("FileMonitor")
+        self.event_bus = get_event_bus()
+        
+        # Watchdog observer
+        self._observer: Optional[Observer] = None
+        self._running = False
+        
+        # Folder handlers
+        self._handlers: Dict[str, FileEventHandler] = {}
+        
+        # Metrics
+        self._events_processed = 0
+        self._actions_created = 0
+        
+        # Load configuration
+        self._load_config()
+        
+        # Setup event handlers
+        self._setup_event_handlers()
+        
+        self.logger.info("FileMonitor initialized")
     
-    def add_monitor(self, name: str, monitor: FileMonitor):
+    def _load_config(self):
+        """Load configuration."""
+        try:
+            with open(self.config_path, 'r') as f:
+                self.config = yaml.safe_load(f) or {}
+            
+            self.vault_path = self.config.get('app', {}).get('vault_path', './AI_Employee_Vault')
+            
+        except Exception as e:
+            self.logger.warning(f"Could not load config: {e}")
+            self.vault_path = './AI_Employee_Vault'
+    
+    def _setup_event_handlers(self):
+        """Setup event bus handlers for file events."""
+        # Handle inbox file creation - convert to action
+        self.event_bus.subscribe(
+            EventType.FILE_CREATED,
+            self._on_file_created,
+            async_callback=True
+        )
+        
+        # Handle file moves (for workflow transitions)
+        self.event_bus.subscribe(
+            EventType.FILE_MOVED,
+            self._on_file_moved,
+            async_callback=True
+        )
+        
+        self.logger.info("FileMonitor event handlers registered")
+    
+    async def _on_file_created(self, event):
+        """Handle file created events."""
+        folder = event.payload.get('folder', '')
+        file_path = event.payload.get('path', '')
+        filename = event.payload.get('filename', '')
+        
+        self._events_processed += 1
+        
+        # If file created in Inbox, create action file
+        if folder == 'Inbox':
+            await self._process_inbox_file(Path(file_path))
+    
+    async def _on_file_moved(self, event):
+        """Handle file moved events - track workflow transitions."""
+        src_folder = event.payload.get('src_folder', '')
+        dest_folder = event.payload.get('dest_folder', '')
+        filename = event.payload.get('filename', '')
+        
+        self._events_processed += 1
+        self.logger.info(f"Workflow transition: {filename} ({src_folder} -> {dest_folder})")
+        
+        # Track specific transitions
+        if dest_folder == 'Approved':
+            publish_event(
+                EventType.ACTION_APPROVED,
+                {"filename": filename, "path": event.payload.get('dest_path')},
+                source="file_monitor"
+            )
+        elif dest_folder == 'Done':
+            publish_event(
+                EventType.ACTION_EXECUTED,
+                {"filename": filename, "path": event.payload.get('dest_path')},
+                source="file_monitor"
+            )
+    
+    async def _process_inbox_file(self, file_path: Path):
         """
-        Add a file monitor to the manager.
+        Process a file created in Inbox - create action file.
         
         Args:
-            name: Name to identify the monitor
-            monitor: FileMonitor instance
+            file_path: Path to the inbox file
         """
-        self.monitors[name] = monitor
+        try:
+            self.logger.info(f"Processing inbox file: {file_path.name}")
+            
+            # Read file content
+            content = ""
+            if file_path.exists():
+                try:
+                    content = file_path.read_text(encoding='utf-8')
+                except:
+                    content = file_path.read_text(encoding='latin-1')
+            
+            # Determine action type based on content/filename
+            action_type = self._determine_action_type(file_path.name, content)
+            
+            # Create action file
+            action = ActionFile(
+                action_type=action_type,
+                priority="medium",
+                context={
+                    "source_file": file_path.name,
+                    "content_preview": content[:500] if content else "",
+                    "file_path": str(file_path)
+                },
+                source="filesystem"
+            )
+            
+            # Save action file to Needs_Action
+            needs_action_path = Path(self.vault_path) / "Needs_Action"
+            ensure_directory_exists(str(needs_action_path))
+            
+            action_filename = f"{action.id}.action.yaml"
+            action_path = needs_action_path / action_filename
+            
+            action.save_to_file(str(action_path))
+            
+            self._actions_created += 1
+            self.logger.info(f"Action file created: {action_path.name}")
+            
+            # Publish action generated event
+            publish_event(
+                EventType.ACTION_GENERATED,
+                {
+                    "action_id": action.id,
+                    "action_type": action.type,
+                    "action_path": str(action_path),
+                    "source": "filesystem"
+                },
+                source="file_monitor"
+            )
+            
+            # Move original file to processed (optional - can be configured)
+            # For now, we leave it in Inbox
+            
+        except Exception as e:
+            self.logger.error(f"Error processing inbox file {file_path.name}: {e}")
     
-    def start_all_monitors(self):
-        """Start all registered monitors."""
-        for name, monitor in self.monitors.items():
-            print(f"Starting monitor: {name}")
-            monitor.setup_default_callbacks()
-            monitor.start_monitoring()
+    def _determine_action_type(self, filename: str, content: str) -> str:
+        """Determine action type based on filename and content."""
+        filename_lower = filename.lower()
+        content_lower = content.lower()
+        
+        # Check filename patterns
+        if 'meeting' in filename_lower or 'calendar' in filename_lower:
+            return 'meeting_request'
+        elif 'report' in filename_lower:
+            return 'report_generation'
+        elif 'analysis' in filename_lower or 'data' in filename_lower:
+            return 'data_analysis'
+        elif 'doc' in filename_lower or 'document' in filename_lower:
+            return 'document_creation'
+        
+        # Check content patterns
+        if 'meeting' in content_lower or 'schedule' in content_lower:
+            return 'meeting_request'
+        elif 'report' in content_lower or 'summary' in content_lower:
+            return 'report_generation'
+        elif 'analyze' in content_lower or 'analysis' in content_lower:
+            return 'data_analysis'
+        elif 'document' in content_lower or 'create' in content_lower:
+            return 'document_creation'
+        elif 'follow up' in content_lower or 'follow-up' in content_lower:
+            return 'follow_up'
+        
+        return 'email_response'  # Default
     
-    def stop_all_monitors(self):
-        """Stop all registered monitors."""
-        for name, monitor in self.monitors.items():
-            print(f"Stopping monitor: {name}")
-            monitor.stop_monitoring()
+    def start(self):
+        """Start the file monitor."""
+        if self._running:
+            self.logger.warning("FileMonitor already running")
+            return
+        
+        self._running = True
+        
+        # Create observer
+        self._observer = Observer()
+        
+        # Setup folders to monitor
+        folders = ['Inbox', 'Needs_Action', 'Plans', 'Pending_Approval', 'Approved', 'Done']
+        
+        for folder_name in folders:
+            folder_path = Path(self.vault_path) / folder_name
+            ensure_directory_exists(str(folder_path))
+            
+            # Create handler for this folder
+            handler = FileEventHandler(folder_name, self.event_bus, self.logger)
+            self._handlers[folder_name] = handler
+            
+            # Schedule monitoring
+            self._observer.schedule(handler, str(folder_path), recursive=False)
+            self.logger.debug(f"Monitoring folder: {folder_name}")
+        
+        # Start observer
+        self._observer.start()
+        
+        self.logger.info("FileMonitor started")
+        
+        publish_event(
+            EventType.SERVICE_STARTED,
+            {"service": "file_monitor"},
+            source="file_monitor"
+        )
+    
+    def stop(self):
+        """Stop the file monitor."""
+        if not self._running:
+            return
+        
+        self._running = False
+        
+        if self._observer:
+            self._observer.stop()
+            self._observer.join(timeout=5)
+            self._observer = None
+        
+        self.logger.info("FileMonitor stopped")
+        
+        publish_event(
+            EventType.SERVICE_STOPPED,
+            {"service": "file_monitor"},
+            source="file_monitor"
+        )
+    
+    def health_check(self) -> bool:
+        """Check service health."""
+        if not self._running:
+            return False
+        
+        if not self._observer or not self._observer.is_alive():
+            return False
+        
+        # Check vault path exists
+        return Path(self.vault_path).exists()
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get service metrics."""
+        return {
+            "events_processed": self._events_processed,
+            "actions_created": self._actions_created,
+            "folders_monitored": len(self._handlers),
+            "vault_path": self.vault_path,
+            "observer_alive": self._observer.is_alive() if self._observer else False
+        }
+
+
+# Factory function
+def create_file_monitor(config_path: str = "./config.yaml") -> FileMonitor:
+    """Factory function to create FileMonitor."""
+    return FileMonitor(config_path)

@@ -1,8 +1,9 @@
 """
-Main CLI entry point for AI Employee Foundation
+Main CLI entry point for AI Employee Foundation - Gold Tier
 """
 import argparse
 import sys
+import asyncio
 from pathlib import Path
 
 # Add the src directory to the path so we can import modules
@@ -12,13 +13,15 @@ if str(src_dir) not in sys.path:
 
 from cli.commands.vault_cmd import VaultCommand
 from cli.commands.watch_cmd import WatchCommand
+from cli.commands.orchestrator_cmd import OrchestratorCommand
+from cli.commands.approval_cmd import ApprovalCLI
 
 
 def main():
     """Main entry point for the CLI application."""
     parser = argparse.ArgumentParser(
         prog="ai-employee",
-        description="AI Employee Foundation - Local-first automation system"
+        description="AI Employee Foundation - Gold Tier Automation System"
     )
 
     # Add subparsers for different commands
@@ -30,6 +33,14 @@ def main():
     # Add watch command
     watch_cmd = WatchCommand(subparsers)
 
+    # Add orchestrator command
+    orchestrator_cmd = OrchestratorCommand(subparsers)
+
+    # Add approval commands
+    approval_subparsers = subparsers.add_parser("approval", help="Approval management commands").add_subparsers()
+    approval_cli = ApprovalCLI()
+    approval_cli.register_commands(approval_subparsers)
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -38,6 +49,19 @@ def main():
         vault_cmd.execute(args)
     elif args.command == "watch":
         watch_cmd.execute(args)
+    elif args.command == "start":
+        orchestrator_cmd.execute(args)
+    elif args.command == "stop":
+        orchestrator_cmd.execute(args)
+    elif args.command == "status":
+        orchestrator_cmd.execute(args)
+    elif args.command == "restart":
+        orchestrator_cmd.execute(args)
+    elif args.command == "approval":
+        if hasattr(args, 'func'):
+            args.func(args)
+        else:
+            approval_subparsers.print_help()
     else:
         parser.print_help()
 
