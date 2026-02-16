@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Claude Code Monitoring System
-Monitors local folders and event logs for new tasks without using Claude API.
+Monitors local folders and event logs for new tasks and generates plans using Claude API.
 """
 
 import os
@@ -10,6 +10,14 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+import sys
+
+# Add the src directory to the path so we can import modules
+sys.path.insert(0, str(Path(__file__).parent))
+
+from services.claude_service import ClaudeService
+from models.action_file import ActionFile
+from models.plan_file import PlanFile
 
 class ClaudeCodeMonitor:
     """Claude Code monitoring system for local-first automation."""
@@ -19,6 +27,8 @@ class ClaudeCodeMonitor:
         self.base_path = "AI_Employee_Vault"
         self.inbox_path = os.path.join(self.base_path, "Inbox")
         self.pending_approval_path = os.path.join(self.base_path, "Pending_Approval")
+        self.plans_path = os.path.join(self.base_path, "Plans")
+        self.needs_action_path = os.path.join(self.base_path, "Needs_Action")
         self.system_log_path = os.path.join(self.base_path, "System_Log")
         self.events_log_file = os.path.join(self.system_log_path, "events.log")
 
@@ -26,6 +36,14 @@ class ClaudeCodeMonitor:
         self.last_log_position = 0
         self.processed_events = set()
         self.detected_files = {}
+
+        # Initialize Claude Service
+        try:
+            self.claude_service = ClaudeService()
+            print("✅ Claude Service initialized successfully")
+        except Exception as e:
+            print(f"❌ Error initializing Claude Service: {e}")
+            self.claude_service = None
 
         # Ensure directories exist
         self._ensure_directories()
@@ -36,6 +54,8 @@ class ClaudeCodeMonitor:
             self.base_path,
             self.inbox_path,
             self.pending_approval_path,
+            self.plans_path,
+            self.needs_action_path,
             self.system_log_path
         ]
 

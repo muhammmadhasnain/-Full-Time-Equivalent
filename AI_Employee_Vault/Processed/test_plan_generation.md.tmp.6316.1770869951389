@@ -1,0 +1,11 @@
+# Test Action for Plan Generation
+
+This is a test action to verify that the AI Employee system can generate a plan.
+
+## Action Details
+- Type: document_creation
+- Priority: Medium
+- Description: Create a sample document to test the plan generation workflow
+
+## Expected Outcome
+A plan should be generated and placed in the Plans folder.
