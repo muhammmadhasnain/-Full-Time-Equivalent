@@ -534,7 +534,7 @@ class Orchestrator:
         print()
         print("SERVICES:")
         for name, state in status['services'].items():
-            state_icon = "✅" if state['state'] == 'running' else "❌" if state['state'] == 'error' else "⏸️"
+            state_icon = "[RUNNING]" if state['state'] == 'running' else "[ERROR]" if state['state'] == 'error' else "[STOPPED]"
             print(f"  {state_icon} {name}: {state['state']}")
             if state.get('last_error'):
                 print(f"      Error: {state['last_error']}")

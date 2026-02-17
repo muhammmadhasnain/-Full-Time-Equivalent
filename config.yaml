@@ -1,8 +1,8 @@
 # Application Configuration
 app:
   name: "AI Employee Foundation"
-  env: ${APP_ENV:-development}
-  vault_path: ${VAULT_PATH:-./AI_Employee_Vault}
+  env: development
+  vault_path: C:\Users\Hasnain\Desktop\FTE-hackathon\AI_Employee_Vault
 
 # Gmail Configuration
 gmail:
